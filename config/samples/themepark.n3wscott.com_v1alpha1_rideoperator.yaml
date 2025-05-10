@@ -1,0 +1,9 @@
+apiVersion: themepark.n3wscott.com/v1alpha1
+kind: RideOperator
+metadata:
+  labels:
+    app.kubernetes.io/name: theme-park-provider
+    app.kubernetes.io/managed-by: kustomize
+  name: rideoperator-sample
+spec:
+  # TODO(user): Add fields here

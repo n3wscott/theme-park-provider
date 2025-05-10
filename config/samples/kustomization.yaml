@@ -1,0 +1,5 @@
+## Append samples of your project ##
+resources:
+- themepark.n3wscott.com_v1alpha1_ride.yaml
+- themepark.n3wscott.com_v1alpha1_rideoperator.yaml
+# +kubebuilder:scaffold:manifestskustomizesamples

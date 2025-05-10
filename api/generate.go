@@ -1,0 +1,3 @@
+//go:generate go tool angryjet generate-methodsets --header-file=../hack/boilerplate.go.txt ../api/...
+
+package api
