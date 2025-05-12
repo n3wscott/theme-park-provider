@@ -6,6 +6,8 @@ godebug default=go1.23
 
 tool github.com/crossplane/crossplane-tools/cmd/angryjet
 
+replace github.com/crossplane/crossplane-runtime => ../crossplane/crossplane-runtime
+
 require (
 	github.com/crossplane/crossplane-runtime v1.20.0-rc.0.0.20250509182016-1a8b6a8ea258
 	github.com/onsi/ginkgo/v2 v2.22.0

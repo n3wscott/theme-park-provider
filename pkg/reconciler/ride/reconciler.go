@@ -35,6 +35,8 @@ type connecter struct{ client client.Client }
 
 // Connect to the supplied resource.Managed (presumed to be a Ride) by using the Provider.
 func (c *connecter) Connect(ctx context.Context, mg resource.Managed) (managed.ExternalClient, error) {
+	log := ctrl.LoggerFrom(ctx)
+	log.Info("Connecting to provider")
 	i, ok := mg.(*v1alpha1.Ride)
 	if !ok {
 		return nil, errors.New("managed resource is not a Ride")
@@ -61,6 +63,9 @@ type external struct{ client client.Client }
 // calls Observe in order to determine whether an external resource needs to be
 // created, updated, or deleted.
 func (e *external) Observe(ctx context.Context, mg resource.Managed) (managed.ExternalObservation, error) {
+	log := ctrl.LoggerFrom(ctx)
+	log.Info("Observing", "type", mg.GetObjectKind().GroupVersionKind().String())
+
 	i, ok := mg.(*v1alpha1.Ride)
 	if !ok {
 		return managed.ExternalObservation{}, errors.New("managed resource is not a Ride")
@@ -84,6 +89,9 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 // resource. managed.Reconciler only calls Create if Observe reported
 // that the external resource did not exist.
 func (e *external) Create(ctx context.Context, mg resource.Managed) (managed.ExternalCreation, error) {
+	log := ctrl.LoggerFrom(ctx)
+	log.Info("Create", "type", mg.GetObjectKind().GroupVersionKind().String())
+
 	i, ok := mg.(*v1alpha1.Ride)
 	if !ok {
 		return managed.ExternalCreation{}, errors.New("managed resource is not a Ride")
@@ -100,6 +108,9 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 // managed resource. managed.Reconciler only calls Update if Observe
 // reported that the external resource was not up to date.
 func (e *external) Update(ctx context.Context, mg resource.Managed) (managed.ExternalUpdate, error) {
+	log := ctrl.LoggerFrom(ctx)
+	log.Info("Update", "type", mg.GetObjectKind().GroupVersionKind().String())
+
 	i, ok := mg.(*v1alpha1.Ride)
 	if !ok {
 		return managed.ExternalUpdate{}, errors.New("managed resource is not a Ride")
@@ -142,6 +153,9 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 // when a managed resource with the 'Delete' deletion policy (the default) has
 // been deleted.
 func (e *external) Delete(ctx context.Context, mg resource.Managed) (managed.ExternalDelete, error) {
+	log := ctrl.LoggerFrom(ctx)
+	log.Info("Delete", "type", mg.GetObjectKind().GroupVersionKind().String())
+
 	i, ok := mg.(*v1alpha1.Ride)
 	if !ok {
 		return managed.ExternalDelete{}, errors.New("managed resource is not a Ride")
