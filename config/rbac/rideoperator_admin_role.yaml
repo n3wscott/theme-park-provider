@@ -24,4 +24,4 @@ rules:
   resources:
   - rideoperators/status
   verbs:
-  - get
+  - '*'

@@ -19,7 +19,6 @@ package main
 import (
 	"crypto/tls"
 	"flag"
-	"github.com/n3wscott/theme-park-provider/pkg/reconciler/ride"
 	"os"
 	"path/filepath"
 
@@ -39,6 +38,8 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
 	themeparkn3wscottcomv1alpha1 "github.com/n3wscott/theme-park-provider/api/v1alpha1"
+	"github.com/n3wscott/theme-park-provider/pkg/reconciler/ride"
+	"github.com/n3wscott/theme-park-provider/pkg/reconciler/rideoperator"
 	// +kubebuilder:scaffold:imports
 )
 
@@ -203,8 +204,13 @@ func main() {
 	}
 
 	// Add the controller to the manager.
-	r := new(ride.RideController)
+	r := new(ride.Controller)
 	if err := r.SetupWithManager(mgr); err != nil {
+		setupLog.Error(err, "unable to SetupWithManager")
+		os.Exit(1)
+	}
+	ro := new(rideoperator.Controller)
+	if err := ro.SetupWithManager(mgr); err != nil {
 		setupLog.Error(err, "unable to SetupWithManager")
 		os.Exit(1)
 	}

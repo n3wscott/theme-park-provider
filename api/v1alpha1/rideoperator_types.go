@@ -23,7 +23,7 @@ import (
 
 type RideOperatorParameters struct {
 	// Frequency is how often this operator operates ride per hour.
-	Frequency int `json:"capacity"`
+	Frequency int `json:"frequency"`
 
 	// Ride is the ride this operator is assigned to.
 	// +optional

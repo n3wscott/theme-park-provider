@@ -1,4 +1,4 @@
-package ride
+package rideoperator
 
 import (
 	"context"
@@ -23,10 +23,10 @@ type Controller struct{}
 // SetupWithManager instantiates a new controller using a managed.Reconciler configured to reconcile Ride.
 func (c *Controller) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
-		Named(strings.ToLower(fmt.Sprintf("%s.%s", v1alpha1.RideKind, v1alpha1.GroupVersion.Group))).
-		For(&v1alpha1.Ride{}).
+		Named(strings.ToLower(fmt.Sprintf("%s.%s", v1alpha1.RideOperatorKind, v1alpha1.GroupVersion.Group))).
+		For(&v1alpha1.RideOperator{}).
 		Complete(managed.NewReconciler(mgr,
-			resource.ManagedKind(v1alpha1.RideGroupVersionKind),
+			resource.ManagedKind(v1alpha1.RideOperatorGroupVersionKind),
 			managed.WithExternalConnecter(&connecter{client: mgr.GetClient()})))
 }
 
@@ -35,14 +35,14 @@ type connecter struct{ client client.Client }
 
 // Connect to the supplied resource.Managed (presumed to be a Ride) by using the Provider.
 func (c *connecter) Connect(ctx context.Context, mg resource.Managed) (managed.ExternalClient, error) {
-	i, ok := mg.(*v1alpha1.Ride)
+	i, ok := mg.(*v1alpha1.RideOperator)
 	if !ok {
 		return nil, errors.New("managed resource is not a Ride")
 	}
 
 	i.Status.SetConditions(Connecting())
 
-	return &external{client: c.client}, nil
+	return &external{}, nil
 }
 
 func Connecting() xpv1.Condition {
@@ -55,22 +55,22 @@ func Connecting() xpv1.Condition {
 }
 
 // External satisfies the resource.ExternalClient interface.
-type external struct{ client client.Client }
+type external struct{}
 
 // Observe the existing external resource, if any. The managed.Reconciler
 // calls Observe in order to determine whether an external resource needs to be
 // created, updated, or deleted.
 func (e *external) Observe(ctx context.Context, mg resource.Managed) (managed.ExternalObservation, error) {
-	i, ok := mg.(*v1alpha1.Ride)
+	i, ok := mg.(*v1alpha1.RideOperator)
 	if !ok {
-		return managed.ExternalObservation{}, errors.New("managed resource is not a Ride")
+		return managed.ExternalObservation{}, errors.New("managed resource is not a RideOperator")
 	}
 
-	_ = i
+	i.SetConditions(xpv1.Available())
 
 	o := managed.ExternalObservation{
 		ResourceExists:   true,
-		ResourceUpToDate: false,
+		ResourceUpToDate: true,
 		ConnectionDetails: managed.ConnectionDetails{
 			xpv1.ResourceCredentialsSecretUserKey:     []byte("user"),
 			xpv1.ResourceCredentialsSecretEndpointKey: []byte("host"),
@@ -84,56 +84,28 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 // resource. managed.Reconciler only calls Create if Observe reported
 // that the external resource did not exist.
 func (e *external) Create(ctx context.Context, mg resource.Managed) (managed.ExternalCreation, error) {
-	i, ok := mg.(*v1alpha1.Ride)
+	i, ok := mg.(*v1alpha1.RideOperator)
 	if !ok {
-		return managed.ExternalCreation{}, errors.New("managed resource is not a Ride")
+		return managed.ExternalCreation{}, errors.New("managed resource is not a RideOperator")
 	}
 	// Indicate that we're about to create the instance. Remember ExternalClient
 	// authors can use a bespoke condition reason here in cases where Creating
 	// doesn't make sense.
 	i.SetConditions(xpv1.Creating())
 
-	return managed.ExternalCreation{ConnectionDetails: map[string][]byte{"ride": []byte("maybe")}}, nil
+	return managed.ExternalCreation{ConnectionDetails: map[string][]byte{"rideOperator": []byte("maybe")}}, nil
 }
 
 // Update the existing external resource to match the specifications of our
 // managed resource. managed.Reconciler only calls Update if Observe
 // reported that the external resource was not up to date.
 func (e *external) Update(ctx context.Context, mg resource.Managed) (managed.ExternalUpdate, error) {
-	i, ok := mg.(*v1alpha1.Ride)
+	i, ok := mg.(*v1alpha1.RideOperator)
 	if !ok {
-		return managed.ExternalUpdate{}, errors.New("managed resource is not a Ride")
+		return managed.ExternalUpdate{}, errors.New("managed resource is not a RideOperator")
 	}
 
-	i.Status.RidersPerHour = 0
-
-	ros := new(v1alpha1.RideOperatorList)
-
-	if err := e.client.List(ctx, ros); err != nil {
-		return managed.ExternalUpdate{}, err
-	}
-
-	var ro *v1alpha1.RideOperator
-	// Look for an operator for this ride.
-	for _, x := range ros.Items {
-		if x.Spec.ForProvider.Ride.Name == i.GetName() {
-			ro = &x
-		}
-	}
-
-	if ro != nil {
-		i.SetConditions(xpv1.Available())
-		i.Status.Operator = &xpv1.TypedReference{
-			APIVersion: ro.APIVersion,
-			Kind:       ro.Kind,
-			Name:       ro.Name,
-			UID:        ro.UID,
-		}
-		i.Status.RidersPerHour = i.Spec.ForProvider.Capacity * ro.Spec.ForProvider.Frequency
-	} else {
-		i.SetConditions(xpv1.Unavailable())
-		i.Status.RidersPerHour = 0
-	}
+	_ = i
 
 	return managed.ExternalUpdate{}, nil
 }
@@ -142,9 +114,9 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 // when a managed resource with the 'Delete' deletion policy (the default) has
 // been deleted.
 func (e *external) Delete(ctx context.Context, mg resource.Managed) (managed.ExternalDelete, error) {
-	i, ok := mg.(*v1alpha1.Ride)
+	i, ok := mg.(*v1alpha1.RideOperator)
 	if !ok {
-		return managed.ExternalDelete{}, errors.New("managed resource is not a Ride")
+		return managed.ExternalDelete{}, errors.New("managed resource is not a RideOperator")
 	}
 	// Indicate that we're about to delete the instance.
 	i.SetConditions(xpv1.Deleting())
