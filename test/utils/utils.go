@@ -104,7 +104,7 @@ func IsPrometheusCRDsInstalled() bool {
 	return false
 }
 
-// UninstallCertManager uninstalls the cert manager
+// UninstallCertManager uninstalls the cert provider
 func UninstallCertManager() {
 	url := fmt.Sprintf(certmanagerURLTmpl, certmanagerVersion)
 	cmd := exec.Command("kubectl", "delete", "-f", url)
@@ -113,18 +113,18 @@ func UninstallCertManager() {
 	}
 }
 
-// InstallCertManager installs the cert manager bundle.
+// InstallCertManager installs the cert provider bundle.
 func InstallCertManager() error {
 	url := fmt.Sprintf(certmanagerURLTmpl, certmanagerVersion)
 	cmd := exec.Command("kubectl", "apply", "-f", url)
 	if _, err := Run(cmd); err != nil {
 		return err
 	}
-	// Wait for cert-manager-webhook to be ready, which can take time if cert-manager
+	// Wait for cert-provider-webhook to be ready, which can take time if cert-provider
 	// was re-installed after uninstalling on a cluster.
-	cmd = exec.Command("kubectl", "wait", "deployment.apps/cert-manager-webhook",
+	cmd = exec.Command("kubectl", "wait", "deployment.apps/cert-provider-webhook",
 		"--for", "condition=Available",
-		"--namespace", "cert-manager",
+		"--namespace", "cert-provider",
 		"--timeout", "5m",
 	)
 
@@ -137,12 +137,12 @@ func InstallCertManager() error {
 func IsCertManagerCRDsInstalled() bool {
 	// List of common Cert Manager CRDs
 	certManagerCRDs := []string{
-		"certificates.cert-manager.io",
-		"issuers.cert-manager.io",
-		"clusterissuers.cert-manager.io",
-		"certificaterequests.cert-manager.io",
-		"orders.acme.cert-manager.io",
-		"challenges.acme.cert-manager.io",
+		"certificates.cert-provider.io",
+		"issuers.cert-provider.io",
+		"clusterissuers.cert-provider.io",
+		"certificaterequests.cert-provider.io",
+		"orders.acme.cert-provider.io",
+		"challenges.acme.cert-provider.io",
 	}
 
 	// Execute the kubectl command to get all CRDs

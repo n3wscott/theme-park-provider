@@ -2,47 +2,52 @@ package rideoperator
 
 import (
 	"context"
-	"fmt"
-	"strings"
 
 	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
+	"github.com/crossplane/crossplane-runtime/pkg/logging"
 	"github.com/crossplane/crossplane-runtime/pkg/reconciler/managed"
 	"github.com/crossplane/crossplane-runtime/pkg/resource"
 
 	"github.com/n3wscott/theme-park-provider/api/v1alpha1"
 )
 
-type Controller struct{}
 
-// SetupWithManager instantiates a new controller using a managed.Reconciler configured to reconcile Ride.
-func (c *Controller) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
-		Named(strings.ToLower(fmt.Sprintf("%s.%s", v1alpha1.RideOperatorKind, v1alpha1.GroupVersion.Group))).
-		For(&v1alpha1.RideOperator{}).
-		Complete(managed.NewReconciler(mgr,
-			resource.ManagedKind(v1alpha1.RideOperatorGroupVersionKind),
-			managed.WithExternalConnecter(&connecter{client: mgr.GetClient()})))
+// ConnectorWrapper wraps the connector for gRPC support.
+type ConnectorWrapper struct {
+	Log logging.Logger
 }
 
-// Connecter satisfies the resource.ExternalConnector interface.
-type connecter struct{ client client.Client }
+// Connect implements the TypedExternalConnector interface.
+func (c *ConnectorWrapper) Connect(ctx context.Context, mg resource.Managed) (managed.TypedExternalClient[resource.Managed], error) {
+	log := c.Log
+	if log == nil {
+		log = logging.NewNopLogger()
+	}
+	conn := &connector{log: log}
+	return conn.Connect(ctx, mg)
+}
 
-// Connect to the supplied resource.Managed (presumed to be a Ride) by using the Provider.
-func (c *connecter) Connect(ctx context.Context, mg resource.Managed) (managed.ExternalClient, error) {
+// connector satisfies the resource.ExternalConnector interface.
+type connector struct{
+	log logging.Logger
+}
+
+// Connect to the supplied resource.Managed (presumed to be a RideOperator) by using the Provider.
+func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.ExternalClient, error) {
+	c.log.Debug("Connecting to provider")
+
 	i, ok := mg.(*v1alpha1.RideOperator)
 	if !ok {
-		return nil, errors.New("managed resource is not a Ride")
+		return nil, errors.New("managed resource is not a RideOperator")
 	}
 
 	i.Status.SetConditions(Connecting())
 
-	return &external{}, nil
+	return &external{log: c.log}, nil
 }
 
 func Connecting() xpv1.Condition {
@@ -55,12 +60,17 @@ func Connecting() xpv1.Condition {
 }
 
 // External satisfies the resource.ExternalClient interface.
-type external struct{}
+type external struct{
+	log logging.Logger
+}
 
 // Observe the existing external resource, if any. The managed.Reconciler
 // calls Observe in order to determine whether an external resource needs to be
 // created, updated, or deleted.
 func (e *external) Observe(ctx context.Context, mg resource.Managed) (managed.ExternalObservation, error) {
+	gvk := mg.GetObjectKind().GroupVersionKind().String()
+	e.log.Debug("Observing", "type", gvk)
+	
 	i, ok := mg.(*v1alpha1.RideOperator)
 	if !ok {
 		return managed.ExternalObservation{}, errors.New("managed resource is not a RideOperator")
@@ -84,6 +94,9 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 // resource. managed.Reconciler only calls Create if Observe reported
 // that the external resource did not exist.
 func (e *external) Create(ctx context.Context, mg resource.Managed) (managed.ExternalCreation, error) {
+	gvk := mg.GetObjectKind().GroupVersionKind().String()
+	e.log.Debug("Create", "type", gvk)
+	
 	i, ok := mg.(*v1alpha1.RideOperator)
 	if !ok {
 		return managed.ExternalCreation{}, errors.New("managed resource is not a RideOperator")
@@ -100,6 +113,9 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 // managed resource. managed.Reconciler only calls Update if Observe
 // reported that the external resource was not up to date.
 func (e *external) Update(ctx context.Context, mg resource.Managed) (managed.ExternalUpdate, error) {
+	gvk := mg.GetObjectKind().GroupVersionKind().String()
+	e.log.Debug("Update", "type", gvk)
+	
 	i, ok := mg.(*v1alpha1.RideOperator)
 	if !ok {
 		return managed.ExternalUpdate{}, errors.New("managed resource is not a RideOperator")
@@ -114,6 +130,9 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 // when a managed resource with the 'Delete' deletion policy (the default) has
 // been deleted.
 func (e *external) Delete(ctx context.Context, mg resource.Managed) (managed.ExternalDelete, error) {
+	gvk := mg.GetObjectKind().GroupVersionKind().String()
+	e.log.Debug("Delete", "type", gvk)
+	
 	i, ok := mg.(*v1alpha1.RideOperator)
 	if !ok {
 		return managed.ExternalDelete{}, errors.New("managed resource is not a RideOperator")

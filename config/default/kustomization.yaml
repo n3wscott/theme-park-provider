@@ -21,11 +21,11 @@ resources:
 # [WEBHOOK] To enable webhook, uncomment all the sections with [WEBHOOK] prefix including the one in
 # crd/kustomization.yaml
 #- ../webhook
-# [CERTMANAGER] To enable cert-manager, uncomment all sections with 'CERTMANAGER'. 'WEBHOOK' components are required.
+# [CERTMANAGER] To enable cert-provider, uncomment all sections with 'CERTMANAGER'. 'WEBHOOK' components are required.
 #- ../certmanager
 # [PROMETHEUS] To enable prometheus monitor, uncomment all sections with 'PROMETHEUS'.
 #- ../prometheus
-# [METRICS] Expose the controller manager metrics service.
+# [METRICS] Expose the controller provider metrics service.
 - metrics_service.yaml
 # [NETWORK POLICY] Protect the /metrics endpoint and Webhook Server with NetworkPolicy.
 # Only Pod(s) running a namespace labeled with 'metrics: enabled' will be able to gather the metrics.
@@ -54,18 +54,18 @@ patches:
 #  target:
 #    kind: Deployment
 
-# [CERTMANAGER] To enable cert-manager, uncomment all sections with 'CERTMANAGER' prefix.
-# Uncomment the following replacements to add the cert-manager CA injection annotations
+# [CERTMANAGER] To enable cert-provider, uncomment all sections with 'CERTMANAGER' prefix.
+# Uncomment the following replacements to add the cert-provider CA injection annotations
 #replacements:
 # - source: # Uncomment the following block to enable certificates for metrics
 #     kind: Service
 #     version: v1
-#     name: controller-manager-metrics-service
+#     name: controller-provider-metrics-service
 #     fieldPath: metadata.name
 #   targets:
 #     - select:
 #         kind: Certificate
-#         group: cert-manager.io
+#         group: cert-provider.io
 #         version: v1
 #         name: metrics-certs
 #       fieldPaths:
@@ -79,7 +79,7 @@ patches:
 #         kind: ServiceMonitor
 #         group: monitoring.coreos.com
 #         version: v1
-#         name: controller-manager-metrics-monitor
+#         name: controller-provider-metrics-monitor
 #       fieldPaths:
 #         - spec.endpoints.0.tlsConfig.serverName
 #       options:
@@ -90,12 +90,12 @@ patches:
 # - source:
 #     kind: Service
 #     version: v1
-#     name: controller-manager-metrics-service
+#     name: controller-provider-metrics-service
 #     fieldPath: metadata.namespace
 #   targets:
 #     - select:
 #         kind: Certificate
-#         group: cert-manager.io
+#         group: cert-provider.io
 #         version: v1
 #         name: metrics-certs
 #       fieldPaths:
@@ -109,7 +109,7 @@ patches:
 #         kind: ServiceMonitor
 #         group: monitoring.coreos.com
 #         version: v1
-#         name: controller-manager-metrics-monitor
+#         name: controller-provider-metrics-monitor
 #       fieldPaths:
 #         - spec.endpoints.0.tlsConfig.serverName
 #       options:
@@ -125,7 +125,7 @@ patches:
 #   targets:
 #     - select:
 #         kind: Certificate
-#         group: cert-manager.io
+#         group: cert-provider.io
 #         version: v1
 #         name: serving-cert
 #       fieldPaths:
@@ -143,7 +143,7 @@ patches:
 #   targets:
 #     - select:
 #         kind: Certificate
-#         group: cert-manager.io
+#         group: cert-provider.io
 #         version: v1
 #         name: serving-cert
 #       fieldPaths:
@@ -156,7 +156,7 @@ patches:
 #
 # - source: # Uncomment the following block if you have a ValidatingWebhook (--programmatic-validation)
 #     kind: Certificate
-#     group: cert-manager.io
+#     group: cert-provider.io
 #     version: v1
 #     name: serving-cert # This name should match the one in certificate.yaml
 #     fieldPath: .metadata.namespace # Namespace of the certificate CR
@@ -164,14 +164,14 @@ patches:
 #     - select:
 #         kind: ValidatingWebhookConfiguration
 #       fieldPaths:
-#         - .metadata.annotations.[cert-manager.io/inject-ca-from]
+#         - .metadata.annotations.[cert-provider.io/inject-ca-from]
 #       options:
 #         delimiter: '/'
 #         index: 0
 #         create: true
 # - source:
 #     kind: Certificate
-#     group: cert-manager.io
+#     group: cert-provider.io
 #     version: v1
 #     name: serving-cert
 #     fieldPath: .metadata.name
@@ -179,7 +179,7 @@ patches:
 #     - select:
 #         kind: ValidatingWebhookConfiguration
 #       fieldPaths:
-#         - .metadata.annotations.[cert-manager.io/inject-ca-from]
+#         - .metadata.annotations.[cert-provider.io/inject-ca-from]
 #       options:
 #         delimiter: '/'
 #         index: 1
@@ -187,7 +187,7 @@ patches:
 #
 # - source: # Uncomment the following block if you have a DefaultingWebhook (--defaulting )
 #     kind: Certificate
-#     group: cert-manager.io
+#     group: cert-provider.io
 #     version: v1
 #     name: serving-cert
 #     fieldPath: .metadata.namespace # Namespace of the certificate CR
@@ -195,14 +195,14 @@ patches:
 #     - select:
 #         kind: MutatingWebhookConfiguration
 #       fieldPaths:
-#         - .metadata.annotations.[cert-manager.io/inject-ca-from]
+#         - .metadata.annotations.[cert-provider.io/inject-ca-from]
 #       options:
 #         delimiter: '/'
 #         index: 0
 #         create: true
 # - source:
 #     kind: Certificate
-#     group: cert-manager.io
+#     group: cert-provider.io
 #     version: v1
 #     name: serving-cert
 #     fieldPath: .metadata.name
@@ -210,7 +210,7 @@ patches:
 #     - select:
 #         kind: MutatingWebhookConfiguration
 #       fieldPaths:
-#         - .metadata.annotations.[cert-manager.io/inject-ca-from]
+#         - .metadata.annotations.[cert-provider.io/inject-ca-from]
 #       options:
 #         delimiter: '/'
 #         index: 1
@@ -218,7 +218,7 @@ patches:
 #
 # - source: # Uncomment the following block if you have a ConversionWebhook (--conversion)
 #     kind: Certificate
-#     group: cert-manager.io
+#     group: cert-provider.io
 #     version: v1
 #     name: serving-cert
 #     fieldPath: .metadata.namespace # Namespace of the certificate CR
@@ -226,7 +226,7 @@ patches:
 # +kubebuilder:scaffold:crdkustomizecainjectionns
 # - source:
 #     kind: Certificate
-#     group: cert-manager.io
+#     group: cert-provider.io
 #     version: v1
 #     name: serving-cert
 #     fieldPath: .metadata.name

@@ -25,7 +25,7 @@ spec:
   template:
     metadata:
       annotations:
-        kubectl.kubernetes.io/default-container: manager
+        kubectl.kubernetes.io/default-container: provider
       labels:
         control-plane: controller-manager
         app.kubernetes.io/name: theme-park-provider
@@ -33,7 +33,7 @@ spec:
       # TODO(user): Uncomment the following code to configure the nodeAffinity expression
       # according to the platforms which are supported by your solution.
       # It is considered best practice to support multiple architectures. You can
-      # build your manager image using the makefile target docker-buildx.
+      # build your provider image using the makefile target docker-buildx.
       # affinity:
       #   nodeAffinity:
       #     requiredDuringSchedulingIgnoredDuringExecution:
@@ -63,7 +63,7 @@ spec:
           - --health-probe-bind-address=:8081
         image: ko://github.com/n3wscott/theme-park-provider/cmd/manager
         imagePullPolicy: Never
-        name: manager
+        name: provider
         ports: []
         securityContext:
           allowPrivilegeEscalation: false
@@ -93,5 +93,5 @@ spec:
             memory: 64Mi
         volumeMounts: []
       volumes: []
-      serviceAccountName: controller-manager
+      serviceAccountName: controller-provider
       terminationGracePeriodSeconds: 10

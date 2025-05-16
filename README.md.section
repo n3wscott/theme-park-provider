@@ -1,0 +1,64 @@
+## Next Steps for Further Simplification
+
+While we've removed controller-runtime and the manager from the main entry point, we still have some controller-runtime dependencies in our reconcilers. Here's how we could further simplify the implementation:
+
+### 1. Remove SetupWithGRPC Method
+
+The `SetupWithGRPC` method in each reconciler is still using controller-runtime and creating controllers. This is only needed for the controller side of Crossplane, not for the provider side.
+
+For a true standalone gRPC provider, you only need:
+- The `ConnectorWrapper` implementation
+- The `connector` implementation
+- The `external` client implementation
+
+### 2. Create Direct Registration API
+
+Instead of relying on SetupWith* methods, providers could directly register their handlers with the gRPC server:
+
+```go
+// Example simplified registration in main.go
+builder.RegisterHandler(
+    themeparkn3wscottcomv1alpha1.RideGroupVersionKind,
+    &ride.ConnectorWrapper{},
+)
+```
+
+### 3. Remove Controller-Runtime Dependencies
+
+The current provider implementation still has dependencies on:
+- controller-runtime logging
+- controller-runtime client
+- manager setup code
+
+These could be replaced with:
+- Standard klog logging (as we've already started to do)
+- A minimal client interface specific to provider needs
+- Direct gRPC server registration without controller setup
+
+### 4. Separate Client and Server Packages
+
+To make the separation clearer, we could reorganize the code into:
+- `pkg/server` - Contains only the provider server implementation
+- `pkg/client` - Contains the controller-side client implementation
+- `pkg/reconciler` - Contains the shared reconciler logic that both sides use
+
+### Example Implementation
+
+A fully simplified provider would look like:
+
+```go
+// main.go
+func main() {
+    // Setup gRPC server
+    server, err := remote.NewProviderServer(scheme)
+    
+    // Register handlers directly
+    server.RegisterHandler(v1alpha1.RideGroupVersionKind, &ride.ExternalConnector{})
+    server.RegisterHandler(v1alpha1.RideOperatorGroupVersionKind, &rideoperator.ExternalConnector{})
+    
+    // Start server
+    server.Serve(":50051")
+}
+```
+
+By removing the controller-runtime dependencies entirely, we can make the provider much more lightweight and focused solely on implementing the external resource management logic.

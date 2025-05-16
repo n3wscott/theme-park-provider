@@ -2,41 +2,44 @@ package ride
 
 import (
 	"context"
-	"fmt"
-	"strings"
 
 	"github.com/pkg/errors"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	xpv1 "github.com/crossplane/crossplane-runtime/apis/common/v1"
+	"github.com/crossplane/crossplane-runtime/pkg/logging"
 	"github.com/crossplane/crossplane-runtime/pkg/reconciler/managed"
 	"github.com/crossplane/crossplane-runtime/pkg/resource"
 
 	"github.com/n3wscott/theme-park-provider/api/v1alpha1"
 )
 
-type Controller struct{}
 
-// SetupWithManager instantiates a new controller using a managed.Reconciler configured to reconcile Ride.
-func (c *Controller) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
-		Named(strings.ToLower(fmt.Sprintf("%s.%s", v1alpha1.RideKind, v1alpha1.GroupVersion.Group))).
-		For(&v1alpha1.Ride{}).
-		Complete(managed.NewReconciler(mgr,
-			resource.ManagedKind(v1alpha1.RideGroupVersionKind),
-			managed.WithExternalConnecter(&connecter{client: mgr.GetClient()})))
+// ConnectorWrapper wraps the connector for gRPC support.
+type ConnectorWrapper struct {
+	Log logging.Logger
 }
 
-// Connecter satisfies the resource.ExternalConnector interface.
-type connecter struct{ client client.Client }
+// Connect implements the TypedExternalConnector interface.
+func (c *ConnectorWrapper) Connect(ctx context.Context, mg resource.Managed) (managed.TypedExternalClient[resource.Managed], error) {
+	log := c.Log
+	if log == nil {
+		log = logging.NewNopLogger()
+	}
+	conn := &connector{log: log}
+	return conn.Connect(ctx, mg)
+}
+
+// connector satisfies the resource.ExternalConnector interface.
+type connector struct{
+	log logging.Logger
+}
 
 // Connect to the supplied resource.Managed (presumed to be a Ride) by using the Provider.
-func (c *connecter) Connect(ctx context.Context, mg resource.Managed) (managed.ExternalClient, error) {
-	log := ctrl.LoggerFrom(ctx)
-	log.Info("Connecting to provider")
+func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.ExternalClient, error) {
+	c.log.Debug("Connecting to provider")
+
 	i, ok := mg.(*v1alpha1.Ride)
 	if !ok {
 		return nil, errors.New("managed resource is not a Ride")
@@ -44,27 +47,49 @@ func (c *connecter) Connect(ctx context.Context, mg resource.Managed) (managed.E
 
 	i.Status.SetConditions(Connecting())
 
-	return &external{client: c.client}, nil
+	return &external{log: c.log}, nil
 }
+
+const TypeOperational xpv1.ConditionType = "Operational"
 
 func Connecting() xpv1.Condition {
 	return xpv1.Condition{
-		Type:               xpv1.TypeReady,
-		Status:             corev1.ConditionFalse,
+		Type:               TypeOperational,
+		Status:             corev1.ConditionUnknown,
 		LastTransitionTime: metav1.Now(),
 		Reason:             xpv1.ReasonCreating,
 	}
 }
 
+func Operating() xpv1.Condition {
+	return xpv1.Condition{
+		Type:               TypeOperational,
+		Status:             corev1.ConditionTrue,
+		LastTransitionTime: metav1.Now(),
+		Reason:             "Operating",
+	}
+}
+
+func ShortStaffed() xpv1.Condition {
+	return xpv1.Condition{
+		Type:               TypeOperational,
+		Status:             corev1.ConditionFalse,
+		LastTransitionTime: metav1.Now(),
+		Reason:             "ShortStaffed",
+	}
+}
+
 // External satisfies the resource.ExternalClient interface.
-type external struct{ client client.Client }
+type external struct{
+	log logging.Logger
+}
 
 // Observe the existing external resource, if any. The managed.Reconciler
 // calls Observe in order to determine whether an external resource needs to be
 // created, updated, or deleted.
 func (e *external) Observe(ctx context.Context, mg resource.Managed) (managed.ExternalObservation, error) {
-	log := ctrl.LoggerFrom(ctx)
-	log.Info("Observing", "type", mg.GetObjectKind().GroupVersionKind().String())
+	gvk := mg.GetObjectKind().GroupVersionKind().String()
+	e.log.Debug("Observing", "type", gvk)
 
 	i, ok := mg.(*v1alpha1.Ride)
 	if !ok {
@@ -89,8 +114,8 @@ func (e *external) Observe(ctx context.Context, mg resource.Managed) (managed.Ex
 // resource. managed.Reconciler only calls Create if Observe reported
 // that the external resource did not exist.
 func (e *external) Create(ctx context.Context, mg resource.Managed) (managed.ExternalCreation, error) {
-	log := ctrl.LoggerFrom(ctx)
-	log.Info("Create", "type", mg.GetObjectKind().GroupVersionKind().String())
+	gvk := mg.GetObjectKind().GroupVersionKind().String()
+	e.log.Debug("Create", "type", gvk)
 
 	i, ok := mg.(*v1alpha1.Ride)
 	if !ok {
@@ -108,8 +133,8 @@ func (e *external) Create(ctx context.Context, mg resource.Managed) (managed.Ext
 // managed resource. managed.Reconciler only calls Update if Observe
 // reported that the external resource was not up to date.
 func (e *external) Update(ctx context.Context, mg resource.Managed) (managed.ExternalUpdate, error) {
-	log := ctrl.LoggerFrom(ctx)
-	log.Info("Update", "type", mg.GetObjectKind().GroupVersionKind().String())
+	gvk := mg.GetObjectKind().GroupVersionKind().String()
+	e.log.Debug("Update", "type", gvk)
 
 	i, ok := mg.(*v1alpha1.Ride)
 	if !ok {
@@ -120,9 +145,9 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 
 	ros := new(v1alpha1.RideOperatorList)
 
-	if err := e.client.List(ctx, ros); err != nil {
-		return managed.ExternalUpdate{}, err
-	}
+	//if err := e.client.List(ctx, ros); err != nil {
+	//	return managed.ExternalUpdate{}, err
+	//}
 
 	var ro *v1alpha1.RideOperator
 	// Look for an operator for this ride.
@@ -133,7 +158,7 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 	}
 
 	if ro != nil {
-		i.SetConditions(xpv1.Available())
+		i.SetConditions(Operating())
 		i.Status.Operator = &xpv1.TypedReference{
 			APIVersion: ro.APIVersion,
 			Kind:       ro.Kind,
@@ -142,7 +167,7 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 		}
 		i.Status.RidersPerHour = i.Spec.ForProvider.Capacity * ro.Spec.ForProvider.Frequency
 	} else {
-		i.SetConditions(xpv1.Unavailable())
+		i.SetConditions(ShortStaffed())
 		i.Status.RidersPerHour = 0
 	}
 
@@ -153,8 +178,8 @@ func (e *external) Update(ctx context.Context, mg resource.Managed) (managed.Ext
 // when a managed resource with the 'Delete' deletion policy (the default) has
 // been deleted.
 func (e *external) Delete(ctx context.Context, mg resource.Managed) (managed.ExternalDelete, error) {
-	log := ctrl.LoggerFrom(ctx)
-	log.Info("Delete", "type", mg.GetObjectKind().GroupVersionKind().String())
+	gvk := mg.GetObjectKind().GroupVersionKind().String()
+	e.log.Debug("Delete", "type", gvk)
 
 	i, ok := mg.(*v1alpha1.Ride)
 	if !ok {
