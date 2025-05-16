@@ -29,7 +29,6 @@ import (
 	"k8s.io/klog/v2"
 	"k8s.io/klog/v2/textlogger"
 
-	"github.com/crossplane/crossplane-runtime/pkg/external/remote"
 	"github.com/crossplane/crossplane-runtime/pkg/logging"
 	themeparkn3wscottcomv1alpha1 "github.com/n3wscott/theme-park-provider/api/v1alpha1"
 	"github.com/n3wscott/theme-park-provider/pkg/reconciler/ride"
