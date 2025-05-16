@@ -24,11 +24,10 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/pkg/errors"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/klog/v2"
-	"k8s.io/klog/v2/klogr"
+	"k8s.io/klog/v2/textlogger"
 
 	"github.com/crossplane/crossplane-runtime/pkg/external/remote"
 	"github.com/crossplane/crossplane-runtime/pkg/logging"
@@ -38,8 +37,8 @@ import (
 )
 
 var (
-	log    logging.Logger
-	s      = runtime.NewScheme()
+	log logging.Logger
+	s   = runtime.NewScheme()
 )
 
 func init() {
@@ -61,7 +60,8 @@ func main() {
 	}
 
 	// Initialize logger
-	log = klogr.New().WithName("theme-park-provider")
+	log = logging.NewLogrLogger(textlogger.NewLogger(textlogger.NewConfig()).WithName("theme-park-provider"))
+
 	log.Info("Starting theme park provider")
 
 	// Get gRPC configuration from environment
@@ -97,7 +97,7 @@ func main() {
 
 	// Add TLS if enabled
 	if useTLS && tlsCertPath != "" && tlsKeyPath != "" {
-		opts = append(opts, 
+		opts = append(opts,
 			remote.WithProviderTLSCertPath(tlsCertPath),
 			remote.WithProviderTLSKeyPath(tlsKeyPath),
 		)
@@ -106,19 +106,35 @@ func main() {
 	// Create the provider builder
 	builder, err := remote.NewProviderBuilder(s, opts...)
 	if err != nil {
-		log.Error(err, "Failed to create provider builder")
+		log.Info("Failed to create provider builder", "error", err)
 		os.Exit(1)
 	}
 
-	// Register handlers directly for each resource type
-	if err := registerHandlersDirectly(builder); err != nil {
-		log.Error(err, "Failed to register handlers")
+	// Register Ride handler directly with the logger
+	if err := builder.RegisterHandler(
+		themeparkn3wscottcomv1alpha1.RideGroupVersionKind,
+		&ride.ConnectorWrapper{
+			Log: log.WithValues("handler", "Ride"),
+		},
+	); err != nil {
+		log.Info("Failed to register Ride handler", "error", err)
+		os.Exit(1)
+	}
+
+	// Register RideOperator handler directly with the logger
+	if err := builder.RegisterHandler(
+		themeparkn3wscottcomv1alpha1.RideOperatorGroupVersionKind,
+		&rideoperator.ConnectorWrapper{
+			Log: log.WithValues("handler", "RideOperator"),
+		},
+	); err != nil {
+		log.Info("Failed to register RideOperator handler", "error", err)
 		os.Exit(1)
 	}
 
 	// Start the gRPC server
 	if err := builder.Start(ctx); err != nil {
-		log.Error(err, "Failed to start gRPC server")
+		log.Info("Failed to start gRPC server", "error", err)
 		os.Exit(1)
 	}
 
@@ -128,29 +144,3 @@ func main() {
 	<-ctx.Done()
 	log.Info("Shutting down")
 }
-
-// registerHandlersDirectly registers handlers directly for all resource types with the provider builder.
-func registerHandlersDirectly(builder *remote.ProviderBuilder) error {
-	// Register Ride handler directly with the logger
-	if err := builder.RegisterHandler(
-		themeparkn3wscottcomv1alpha1.RideGroupVersionKind, 
-		&ride.ConnectorWrapper{
-			Log: log.WithValues("handler", "Ride"),
-		},
-	); err != nil {
-		return errors.Wrap(err, "failed to register Ride handler")
-	}
-
-	// Register RideOperator handler directly with the logger
-	if err := builder.RegisterHandler(
-		themeparkn3wscottcomv1alpha1.RideOperatorGroupVersionKind, 
-		&rideoperator.ConnectorWrapper{
-			Log: log.WithValues("handler", "RideOperator"),
-		},
-	); err != nil {
-		return errors.Wrap(err, "failed to register RideOperator handler")
-	}
-
-	return nil
-}
-

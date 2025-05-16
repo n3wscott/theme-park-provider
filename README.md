@@ -25,6 +25,7 @@ The theme-park-provider now implements a simplified architecture that focuses on
 1. **Standalone gRPC Server**: The provider runs as a standalone gRPC server without requiring controller-runtime manager.
 2. **Direct Resource Management**: Resource handlers connect directly to the gRPC server for operations.
 3. **Minimal Dependencies**: Reduced Kubernetes client dependency for running the provider service.
+4. **Crossplane Logging**: Uses Crossplane's logging interface for consistent, structured logging.
 
 We still maintain the controller-side setup functions (`SetupWithGRPC`) for backward compatibility with existing controller implementations. These will be removed in future iterations as we move toward a fully decoupled architecture.
 
@@ -192,8 +193,15 @@ Our current implementation is much simpler and integrates Crossplane's logging i
 ```go
 // main.go
 func main() {
+    // Initialize Crossplane logger
+    log = logging.NewLogrLogger(textlogger.NewLogger(textlogger.NewConfig()).WithName("theme-park-provider"))
+    
     // Setup gRPC server
     builder, err := remote.NewProviderBuilder(scheme, opts...)
+    if err != nil {
+        log.Info("Failed to create provider builder", "error", err)
+        os.Exit(1)
+    }
     
     // Register handlers directly with loggers
     builder.RegisterHandler(
@@ -203,15 +211,24 @@ func main() {
         },
     )
     
-    builder.RegisterHandler(
-        v1alpha1.RideOperatorGroupVersionKind,
-        &rideoperator.ConnectorWrapper{
-            Log: log.WithValues("handler", "RideOperator"),
-        },
-    )
+    // Handle errors with structured logging
+    if err := builder.Start(ctx); err != nil {
+        log.Info("Failed to start gRPC server", "error", err)
+        os.Exit(1)
+    }
     
-    // Start server
-    builder.Start(ctx)
+    log.Info("gRPC provider server started", "endpoint", grpcEndpoint)
+}
+```
+
+```go
+// In reconciler implementation
+func (c *connector) Connect(ctx context.Context, mg resource.Managed) (managed.ExternalClient, error) {
+    c.log.Debug("Connecting to provider")
+    
+    // ...
+    
+    return &external{log: c.log}, nil
 }
 ```
 
