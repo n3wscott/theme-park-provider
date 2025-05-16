@@ -1,64 +1,80 @@
-## Next Steps for Further Simplification
+# Theme Park Provider Architecture
 
-While we've removed controller-runtime and the manager from the main entry point, we still have some controller-runtime dependencies in our reconcilers. Here's how we could further simplify the implementation:
+This project demonstrates a split architecture where the Crossplane provider functionality is divided into two components:
 
-### 1. Remove SetupWithGRPC Method
+1. **Provider Server (gRPC)**: Manages the actual external resource operations
+2. **Reconciler Controller**: Watches Kubernetes resources and delegates to the Provider Server
 
-The `SetupWithGRPC` method in each reconciler is still using controller-runtime and creating controllers. This is only needed for the controller side of Crossplane, not for the provider side.
+## Architecture Overview
 
-For a true standalone gRPC provider, you only need:
-- The `ConnectorWrapper` implementation
-- The `connector` implementation
-- The `external` client implementation
-
-### 2. Create Direct Registration API
-
-Instead of relying on SetupWith* methods, providers could directly register their handlers with the gRPC server:
-
-```go
-// Example simplified registration in main.go
-builder.RegisterHandler(
-    themeparkn3wscottcomv1alpha1.RideGroupVersionKind,
-    &ride.ConnectorWrapper{},
-)
+```
+┌────────────────────┐        ┌───────────────────────┐        ┌─────────────────┐
+│                    │        │                       │        │                 │
+│    Kubernetes      │◄───────┤  Reconciler Process   │◄───────┤ Provider Server │
+│                    │        │                       │        │                 │
+└────────────────────┘        └───────────────────────┘        └─────────────────┘
+    Stores CRDs                Watches for changes &            Implements actual
+    and their status           runs controller-runtime          provider logic via gRPC
 ```
 
-### 3. Remove Controller-Runtime Dependencies
+### Provider Server
 
-The current provider implementation still has dependencies on:
-- controller-runtime logging
-- controller-runtime client
-- manager setup code
+The gRPC server implements the actual provider functionality:
 
-These could be replaced with:
-- Standard klog logging (as we've already started to do)
-- A minimal client interface specific to provider needs
-- Direct gRPC server registration without controller setup
+- Listens on a configurable gRPC endpoint (default: localhost:50051)
+- Registers handlers for different resource types (Ride, RideOperator)
+- Processes incoming gRPC requests to manage external resources
+- Returns connection details and status information
 
-### 4. Separate Client and Server Packages
+### Reconciler Controller
 
-To make the separation clearer, we could reorganize the code into:
-- `pkg/server` - Contains only the provider server implementation
-- `pkg/client` - Contains the controller-side client implementation
-- `pkg/reconciler` - Contains the shared reconciler logic that both sides use
+The reconciler watches Kubernetes resources and connects to the Provider Server:
 
-### Example Implementation
+- Uses controller-runtime to watch Custom Resources
+- Creates gRPC streaming connections to the Provider Server
+- Translates Kubernetes events into gRPC operations
+- Updates Kubernetes resource status based on provider responses
 
-A fully simplified provider would look like:
+## Running the Demo
 
-```go
-// main.go
-func main() {
-    // Setup gRPC server
-    server, err := remote.NewProviderServer(scheme)
-    
-    // Register handlers directly
-    server.RegisterHandler(v1alpha1.RideGroupVersionKind, &ride.ExternalConnector{})
-    server.RegisterHandler(v1alpha1.RideOperatorGroupVersionKind, &rideoperator.ExternalConnector{})
-    
-    // Start server
-    server.Serve(":50051")
-}
+The project includes a convenience script to run both components:
+
+```bash
+# Run both components in separate terminals
+./run-demo.sh
 ```
 
-By removing the controller-runtime dependencies entirely, we can make the provider much more lightweight and focused solely on implementing the external resource management logic.
+You can also run them individually:
+
+```bash
+# Terminal 1 - Provider Server
+export GRPC_ENDPOINT=:50051
+./bin/provider
+
+# Terminal 2 - Reconciler Controller
+./bin/reconciler --provider-endpoint=localhost:50051
+```
+
+## Creating Resources
+
+Once both components are running, you can create and manage resources:
+
+```bash
+# Create a Ride resource
+kubectl apply -f examples/ride.yaml
+
+# Create a RideOperator resource
+kubectl apply -f examples/ride-operator.yaml
+
+# Check status
+kubectl get rides
+kubectl get rideoperators
+```
+
+## Benefits of Split Architecture
+
+1. **Separation of Concerns**: Clear division between Kubernetes interactions and provider logic
+2. **Reduced Permissions**: Provider logic doesn't need direct Kubernetes access
+3. **Independent Scaling**: Each component can be scaled based on its needs
+4. **Isolation**: Provider logic runs independently from Kubernetes controllers
+5. **Testing**: Components can be tested independently

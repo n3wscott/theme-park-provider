@@ -60,7 +60,7 @@ vet: ## Run go vet against code.
 
 .PHONY: test
 test: manifests generate fmt vet setup-envtest ## Run tests.
-	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test $$(go list ./... | grep -v /e2e) -coverprofile cover.out
+	KUBEBUILDER_ASSETS="$(shell $(ENVTEST) use $(ENVTEST_K8S_VERSION) --bin-dir $(LOCALBIN) -p path)" go test $$(go list ./...  < /dev/null |  grep -v /e2e) -coverprofile cover.out
 
 # TODO(user): To use a different vendor for e2e tests, modify the setup under 'tests/e2e'.
 # The default setup assumes Kind is pre-installed and builds/loads the Manager Docker image locally.
@@ -93,12 +93,23 @@ lint-config: golangci-lint ## Verify golangci-lint linter configuration
 ##@ Build
 
 .PHONY: build
-build: manifests generate fmt vet ## Build provider binary.
-	go build -o bin/manager cmd/manager/main.go
+build: build-provider build-reconciler ## Build provider and reconciler binaries.
 
-.PHONY: run
-run: manifests generate fmt vet ## Run a controller from your host.
-	go run ./cmd/main.go
+.PHONY: build-provider
+build-provider: manifests generate fmt vet ## Build provider binary.
+	go build -o bin/provider cmd/provider/main.go
+
+.PHONY: build-reconciler
+build-reconciler: manifests generate fmt vet ## Build reconciler binary.
+	go build -o bin/reconciler cmd/reconciler/main.go
+
+.PHONY: run-provider
+run-provider: manifests generate fmt vet ## Run the provider from your host.
+	go run ./cmd/provider/main.go
+
+.PHONY: run-reconciler
+run-reconciler: manifests generate fmt vet ## Run the reconciler from your host.
+	go run ./cmd/reconciler/main.go
 
 # If you wish to build the provider image targeting other platforms you can use the --platform flag.
 # (i.e. docker build --platform linux/arm64). However, you must enable docker buildKit for it.

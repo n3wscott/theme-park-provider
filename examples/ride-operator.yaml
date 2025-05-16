@@ -1,0 +1,11 @@
+apiVersion: themepark.n3wscott.com/v1alpha1
+kind: RideOperator
+metadata:
+  name: operator-1
+spec:
+  forProvider:
+    frequency: 10  # Rides per hour
+    ride:
+      name: roller-coaster
+      kind: Ride
+      apiVersion: themepark.n3wscott.com/v1alpha1

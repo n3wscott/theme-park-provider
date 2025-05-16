@@ -1,0 +1,8 @@
+apiVersion: themepark.n3wscott.com/v1alpha1
+kind: Ride
+metadata:
+  name: roller-coaster
+spec:
+  forProvider:
+    type: rollercoaster
+    capacity: 30
