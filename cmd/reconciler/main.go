@@ -17,309 +17,103 @@ limitations under the License.
 package main
 
 import (
-	"context"
-	"crypto/tls"
 	"flag"
-	"fmt"
-	"github.com/crossplane/crossplane-runtime/pkg/external/client"
-	"github.com/crossplane/crossplane-runtime/pkg/logging"
-	"github.com/crossplane/crossplane-runtime/pkg/reconciler/managed"
-	"github.com/crossplane/crossplane-runtime/pkg/resource"
-	"google.golang.org/grpc/credentials/insecure"
 	"os"
-	"path/filepath"
-	"sigs.k8s.io/controller-runtime/pkg/manager"
-	"strings"
+	"time"
 
-	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
-	// to ensure that exec-entrypoint and run can make use of them.
-	_ "k8s.io/client-go/plugin/pkg/client/auth"
-
-	"k8s.io/apimachinery/pkg/runtime"
-	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
+	"github.com/spf13/pflag"
 	ctrl "sigs.k8s.io/controller-runtime"
-	"sigs.k8s.io/controller-runtime/pkg/certwatcher"
-	"sigs.k8s.io/controller-runtime/pkg/healthz"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
-	"sigs.k8s.io/controller-runtime/pkg/metrics/filters"
-	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
-	"sigs.k8s.io/controller-runtime/pkg/webhook"
 
-	themeparkn3wscottcomv1alpha1 "github.com/n3wscott/theme-park-provider/api/v1alpha1"
-	// +kubebuilder:scaffold:imports
+	"github.com/crossplane/crossplane-runtime/pkg/logging"
+	"github.com/crossplane/crossplane-runtime/pkg/reconciler/dynamic"
 )
 
-var (
-	scheme   = runtime.NewScheme()
-	setupLog = ctrl.Log.WithName("setup")
-)
-
-func init() {
-	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
-
-	utilruntime.Must(themeparkn3wscottcomv1alpha1.AddToScheme(scheme))
-	// +kubebuilder:scaffold:scheme
-}
-
-// nolint:gocyclo
 func main() {
-	var metricsAddr string
-	var metricsCertPath, metricsCertName, metricsCertKey string
-	var webhookCertPath, webhookCertName, webhookCertKey string
-	var enableLeaderElection bool
-	var probeAddr string
-	var secureMetrics bool
-	var enableHTTP2 bool
-	var tlsOpts []func(*tls.Config)
-	var providerEndpoint string
-	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
-		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
-	flag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to.")
-	flag.BoolVar(&enableLeaderElection, "leader-elect", false,
-		"Enable leader election for controller manager. "+
-			"Enabling this will ensure there is only one active controller manager.")
-	flag.BoolVar(&secureMetrics, "metrics-secure", true,
-		"If set, the metrics endpoint is served securely via HTTPS. Use --metrics-secure=false to use HTTP instead.")
-	flag.StringVar(&webhookCertPath, "webhook-cert-path", "", "The directory that contains the webhook certificate.")
-	flag.StringVar(&webhookCertName, "webhook-cert-name", "tls.crt", "The name of the webhook certificate file.")
-	flag.StringVar(&webhookCertKey, "webhook-cert-key", "tls.key", "The name of the webhook key file.")
-	flag.StringVar(&metricsCertPath, "metrics-cert-path", "",
-		"The directory that contains the metrics server certificate.")
-	flag.StringVar(&metricsCertName, "metrics-cert-name", "tls.crt", "The name of the metrics server certificate file.")
-	flag.StringVar(&metricsCertKey, "metrics-cert-key", "tls.key", "The name of the metrics server key file.")
-	flag.BoolVar(&enableHTTP2, "enable-http2", false,
-		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
-	flag.StringVar(&providerEndpoint, "provider-endpoint", "localhost:50051", "The gRPC provider endpoint")
-	opts := zap.Options{
-		Development: true,
-	}
-	opts.BindFlags(flag.CommandLine)
-	flag.Parse()
+	var (
+		configPath        string
+		providerEndpoint  string
+		leaderElection    bool
+		restartOnProvider bool
+		maxReconcileRate  int
+		pollInterval      time.Duration
+		metricsAddr       string
+		probeAddr         string
+		certDir           string
+	)
 
-	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+	pflag.StringVar(&configPath, "config", "", "Path to the configuration file")
+	pflag.StringVar(&providerEndpoint, "provider-endpoint", "", "gRPC endpoint for the provider (overrides config file)")
+	pflag.BoolVar(&leaderElection, "leader-election", true, "Use leader election for the controller")
+	pflag.BoolVar(&restartOnProvider, "restart-on-provider-disconnect", true, "Restart the reconciler if the provider connection is lost")
+	pflag.IntVar(&maxReconcileRate, "max-reconcile-rate", 10, "The maximum number of concurrent reconciliations per controller")
+	pflag.DurationVar(&pollInterval, "poll-interval", 1*time.Minute, "How often a managed resource should be polled when in a steady state")
+	pflag.StringVar(&metricsAddr, "metrics-bind-address", ":8080", "The address the metric endpoint binds to")
+	pflag.StringVar(&probeAddr, "health-probe-bind-address", ":8081", "The address the probe endpoint binds to")
+	pflag.StringVar(&certDir, "cert-dir", "", "The directory containing TLS certificates")
 
-	// if the enable-http2 flag is false (the default), http/2 should be disabled
-	// due to its vulnerabilities. More specifically, disabling http/2 will
-	// prevent from being vulnerable to the HTTP/2 Stream Cancellation and
-	// Rapid Reset CVEs. For more information see:
-	// - https://github.com/advisories/GHSA-qppj-fm5r-hxr3
-	// - https://github.com/advisories/GHSA-4374-p667-p6c8
-	disableHTTP2 := func(c *tls.Config) {
-		setupLog.Info("disabling http/2")
-		c.NextProtos = []string{"http/1.1"}
-	}
+	// Add controller-runtime flags
+	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
+	pflag.Parse()
 
-	if !enableHTTP2 {
-		tlsOpts = append(tlsOpts, disableHTTP2)
-	}
+	// Setup logging
+	ctrl.SetLogger(zap.New(zap.UseDevMode(true)))
+	setupLog := ctrl.Log.WithName("setup")
+	zapLogger := logging.NewLogrLogger(ctrl.Log.WithName("dynamic-reconciler"))
 
-	// Create watchers for metrics and webhooks certificates
-	var metricsCertWatcher, webhookCertWatcher *certwatcher.CertWatcher
+	// Load configuration
+	var config dynamic.DynamicControllerConfig
+	var err error
 
-	// Initial webhook TLS options
-	webhookTLSOpts := tlsOpts
-
-	if len(webhookCertPath) > 0 {
-		setupLog.Info("Initializing webhook certificate watcher using provided certificates",
-			"webhook-cert-path", webhookCertPath, "webhook-cert-name", webhookCertName, "webhook-cert-key", webhookCertKey)
-
-		var err error
-		webhookCertWatcher, err = certwatcher.New(
-			filepath.Join(webhookCertPath, webhookCertName),
-			filepath.Join(webhookCertPath, webhookCertKey),
-		)
+	if configPath != "" {
+		// Load config from file
+		config, err = dynamic.LoadConfigFromFile(configPath)
 		if err != nil {
-			setupLog.Error(err, "Failed to initialize webhook certificate watcher")
+			setupLog.Error(err, "unable to load configuration from file")
 			os.Exit(1)
 		}
-
-		webhookTLSOpts = append(webhookTLSOpts, func(config *tls.Config) {
-			config.GetCertificate = webhookCertWatcher.GetCertificate
-		})
+	} else if providerEndpoint != "" {
+		// Create config from endpoint
+		config = dynamic.CreateConfigFromEndpoint(providerEndpoint)
+	} else {
+		setupLog.Error(nil, "either --config or --provider-endpoint must be specified")
+		os.Exit(1)
 	}
 
-	webhookServer := webhook.NewServer(webhook.Options{
-		TLSOpts: webhookTLSOpts,
-	})
-
-	// Metrics endpoint is enabled in 'config/default/kustomization.yaml'. The Metrics options configure the server.
-	// More info:
-	// - https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.20.4/pkg/metrics/server
-	// - https://book.kubebuilder.io/reference/metrics.html
-	metricsServerOptions := metricsserver.Options{
-		BindAddress:   metricsAddr,
-		SecureServing: secureMetrics,
-		TLSOpts:       tlsOpts,
+	// Validate config
+	if err := dynamic.ValidateConfig(config); err != nil {
+		setupLog.Error(err, "invalid configuration")
+		os.Exit(1)
 	}
 
-	if secureMetrics {
-		// FilterProvider is used to protect the metrics endpoint with authn/authz.
-		// These configurations ensure that only authorized users and service accounts
-		// can access the metrics endpoint. The RBAC are configured in 'config/rbac/kustomization.yaml'. More info:
-		// https://pkg.go.dev/sigs.k8s.io/controller-runtime@v0.20.4/pkg/metrics/filters#WithAuthenticationAndAuthorization
-		metricsServerOptions.FilterProvider = filters.WithAuthenticationAndAuthorization
-	}
+	// Create controller builder
+	builder := dynamic.NewDynamicControllerBuilder(config,
+		dynamic.WithLogger(zapLogger),
+		dynamic.WithMetricsAddress(metricsAddr),
+		dynamic.WithHealthProbeAddress(probeAddr),
+		dynamic.WithLeaderElection(leaderElection),
+		dynamic.WithPollInterval(pollInterval),
+		dynamic.WithMaxReconcileRate(maxReconcileRate),
+	)
 
-	// If the certificate is not specified, controller-runtime will automatically
-	// generate self-signed certificates for the metrics server. While convenient for development and testing,
-	// this setup is not recommended for production.
-	//
-	// TODO(user): If you enable certManager, uncomment the following lines:
-	// - [METRICS-WITH-CERTS] at config/default/kustomization.yaml to generate and use certificates
-	// managed by cert-manager for the metrics server.
-	// - [PROMETHEUS-WITH-CERTS] at config/prometheus/kustomization.yaml for TLS certification.
-	if len(metricsCertPath) > 0 {
-		setupLog.Info("Initializing metrics certificate watcher using provided certificates",
-			"metrics-cert-path", metricsCertPath, "metrics-cert-name", metricsCertName, "metrics-cert-key", metricsCertKey)
-
-		var err error
-		metricsCertWatcher, err = certwatcher.New(
-			filepath.Join(metricsCertPath, metricsCertName),
-			filepath.Join(metricsCertPath, metricsCertKey),
-		)
-		if err != nil {
-			setupLog.Error(err, "to initialize metrics certificate watcher", "error", err)
-			os.Exit(1)
-		}
-
-		metricsServerOptions.TLSOpts = append(metricsServerOptions.TLSOpts, func(config *tls.Config) {
-			config.GetCertificate = metricsCertWatcher.GetCertificate
-		})
-	}
-
-	mgr, err := ctrl.NewManager(ctrl.GetConfigOrDie(), ctrl.Options{
-		Scheme:                 scheme,
-		Metrics:                metricsServerOptions,
-		WebhookServer:          webhookServer,
-		HealthProbeBindAddress: probeAddr,
-		LeaderElection:         enableLeaderElection,
-		LeaderElectionID:       "75b926bc.n3wscott.com",
-		// LeaderElectionReleaseOnCancel defines if the leader should step down voluntarily
-		// when the Manager ends. This requires the binary to immediately end when the
-		// Manager is stopped, otherwise, this setting is unsafe. Setting this significantly
-		// speeds up voluntary leader transitions as the new leader don't have to wait
-		// LeaseDuration time first.
-		//
-		// In the default scaffold provided, the program ends immediately after
-		// the manager stops, so would be fine to enable this option. However,
-		// if you are doing or is intended to do any operation such as perform cleanups
-		// after the manager stops then its usage might be unsafe.
-		// LeaderElectionReleaseOnCancel: true,
-	})
+	// Build the controller
+	controller, err := builder.Build()
 	if err != nil {
-		setupLog.Error(err, "unable to start manager")
+		setupLog.Error(err, "unable to build controller")
 		os.Exit(1)
 	}
 
-	// Create a gRPC streaming connector to the provider
-	setupLog.Info("Creating gRPC connector", "endpoint", providerEndpoint)
-	rideConnector := client.NewStreamingConnector(
-		providerEndpoint,
-		insecure.NewCredentials(),
-		client.WithClientLogger(logging.NewLogrLogger(ctrl.Log.WithName("ride-connector"))),
-		client.WithResourceTypes(themeparkn3wscottcomv1alpha1.RideGroupVersionKind),
-	)
+	ctx := ctrl.SetupSignalHandler()
 
-	rideOperatorConnector := client.NewStreamingConnector(
-		providerEndpoint,
-		insecure.NewCredentials(),
-		client.WithClientLogger(logging.NewLogrLogger(ctrl.Log.WithName("ride-operator-connector"))),
-		client.WithResourceTypes(themeparkn3wscottcomv1alpha1.RideOperatorGroupVersionKind),
-	)
-
-	// Create controller wrappers with the connectors
-	r := &rideController{
-		connector: rideConnector,
-	}
-
-	ro := &rideoperatorController{
-		connector: rideOperatorConnector,
-	}
-
-	// Add the controllers to the manager
-	if err := r.SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to SetupWithManager")
-		os.Exit(1)
-	}
-	if err := ro.SetupWithManager(mgr); err != nil {
-		setupLog.Error(err, "unable to SetupWithManager")
+	// Setup the controller
+	if err := controller.Setup(ctx); err != nil {
+		setupLog.Error(err, "unable to setup controller")
 		os.Exit(1)
 	}
 
-	// +kubebuilder:scaffold:builder
-
-	if metricsCertWatcher != nil {
-		setupLog.Info("Adding metrics certificate watcher to manager")
-		if err := mgr.Add(metricsCertWatcher); err != nil {
-			setupLog.Error(err, "unable to add metrics certificate watcher to manager")
-			os.Exit(1)
-		}
-	}
-
-	if webhookCertWatcher != nil {
-		setupLog.Info("Adding webhook certificate watcher to manager")
-		if err := mgr.Add(webhookCertWatcher); err != nil {
-			setupLog.Error(err, "unable to add webhook certificate watcher to manager")
-			os.Exit(1)
-		}
-	}
-
-	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
-		setupLog.Error(err, "unable to set up health check")
+	// Start the controller
+	if err := controller.Start(ctx); err != nil {
+		setupLog.Error(err, "problem running controller")
 		os.Exit(1)
 	}
-	if err := mgr.AddReadyzCheck("readyz", healthz.Ping); err != nil {
-		setupLog.Error(err, "unable to set up ready check")
-		os.Exit(1)
-	}
-
-	// Register connectors with cleanup
-	mgr.Add(manager.RunnableFunc(func(ctx context.Context) error {
-		<-ctx.Done()
-		setupLog.Info("Closing gRPC connectors")
-		if err := rideConnector.Close(); err != nil {
-			setupLog.Error(err, "error closing Ride connector")
-		}
-		if err := rideOperatorConnector.Close(); err != nil {
-			setupLog.Error(err, "error closing RideOperator connector")
-		}
-		return nil
-	}))
-
-	setupLog.Info("starting manager")
-	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
-		setupLog.Error(err, "problem running manager")
-		os.Exit(1)
-	}
-}
-
-// rideController manages the controller for Ride resources
-type rideController struct {
-	connector *client.StreamingConnector
-}
-
-// SetupWithManager instantiates a new controller using a managed.Reconciler configured to reconcile Ride.
-func (c *rideController) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
-		Named(strings.ToLower(fmt.Sprintf("%s.%s", themeparkn3wscottcomv1alpha1.RideKind, themeparkn3wscottcomv1alpha1.GroupVersion.Group))).
-		For(&themeparkn3wscottcomv1alpha1.Ride{}).
-		Complete(managed.NewReconciler(mgr,
-			resource.ManagedKind(themeparkn3wscottcomv1alpha1.RideGroupVersionKind),
-			managed.WithExternalConnecter(c.connector)))
-}
-
-// rideoperatorController manages the controller for RideOperator resources
-type rideoperatorController struct {
-	connector *client.StreamingConnector
-}
-
-// SetupWithManager instantiates a new controller using a managed.Reconciler configured to reconcile RideOperator.
-func (c *rideoperatorController) SetupWithManager(mgr ctrl.Manager) error {
-	return ctrl.NewControllerManagedBy(mgr).
-		Named(strings.ToLower(fmt.Sprintf("%s.%s", themeparkn3wscottcomv1alpha1.RideOperatorKind, themeparkn3wscottcomv1alpha1.GroupVersion.Group))).
-		For(&themeparkn3wscottcomv1alpha1.RideOperator{}).
-		Complete(managed.NewReconciler(mgr,
-			resource.ManagedKind(themeparkn3wscottcomv1alpha1.RideOperatorGroupVersionKind),
-			managed.WithExternalConnecter(c.connector)))
 }

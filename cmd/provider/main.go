@@ -29,6 +29,7 @@ import (
 	"k8s.io/klog/v2"
 	"k8s.io/klog/v2/textlogger"
 
+	"github.com/crossplane/crossplane-runtime/pkg/external/server"
 	"github.com/crossplane/crossplane-runtime/pkg/logging"
 	themeparkn3wscottcomv1alpha1 "github.com/n3wscott/theme-park-provider/api/v1alpha1"
 	"github.com/n3wscott/theme-park-provider/pkg/reconciler/ride"
@@ -89,21 +90,21 @@ func main() {
 	log.Info("Setting up gRPC provider server", "endpoint", grpcEndpoint)
 
 	// Create provider server builder options
-	opts := []remote.ProviderOption{
-		remote.WithProviderAddress(grpcEndpoint),
-		remote.WithProviderLogger(log),
+	opts := []server.ProviderOption{
+		server.WithProviderAddress(grpcEndpoint),
+		server.WithProviderLogger(log),
 	}
 
 	// Add TLS if enabled
 	if useTLS && tlsCertPath != "" && tlsKeyPath != "" {
 		opts = append(opts,
-			remote.WithProviderTLSCertPath(tlsCertPath),
-			remote.WithProviderTLSKeyPath(tlsKeyPath),
+			server.WithProviderTLSCertPath(tlsCertPath),
+			server.WithProviderTLSKeyPath(tlsKeyPath),
 		)
 	}
 
 	// Create the provider builder
-	builder, err := remote.NewProviderBuilder(s, opts...)
+	builder, err := server.NewProviderBuilder(s, opts...)
 	if err != nil {
 		log.Info("Failed to create provider builder", "error", err)
 		os.Exit(1)

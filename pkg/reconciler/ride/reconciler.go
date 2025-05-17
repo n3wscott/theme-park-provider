@@ -15,7 +15,6 @@ import (
 	"github.com/n3wscott/theme-park-provider/api/v1alpha1"
 )
 
-
 // ConnectorWrapper wraps the connector for gRPC support.
 type ConnectorWrapper struct {
 	Log logging.Logger
@@ -32,7 +31,7 @@ func (c *ConnectorWrapper) Connect(ctx context.Context, mg resource.Managed) (ma
 }
 
 // connector satisfies the resource.ExternalConnector interface.
-type connector struct{
+type connector struct {
 	log logging.Logger
 }
 
@@ -80,7 +79,7 @@ func ShortStaffed() xpv1.Condition {
 }
 
 // External satisfies the resource.ExternalClient interface.
-type external struct{
+type external struct {
 	log logging.Logger
 }
 
