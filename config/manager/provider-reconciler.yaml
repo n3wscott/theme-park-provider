@@ -83,7 +83,7 @@ spec:
         image: ko://github.com/n3wscott/theme-park-provider/cmd/reconciler
         imagePullPolicy: Never
         args:
-          - --leader-elect
+          - --leader-election
           - --health-probe-bind-address=:8081
           - --provider-endpoint=localhost:50051
         securityContext:
